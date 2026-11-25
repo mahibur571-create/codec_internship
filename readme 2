@@ -1,0 +1,32 @@
+# Spam Message Classifier
+
+A machine learning model that classifies messages as **spam** or **ham** (not spam).
+Built as part of the **Codec Technologies 1-Month AI Internship**.
+
+## Dataset
+[SMS Spam Collection](https://archive.ics.uci.edu/dataset/228/sms+spam+collection): 5,572 labelled messages (4,825 ham, 747 spam). The script downloads it automatically.
+
+## How it works
+1. **Load** the labelled messages.
+2. **Split** into 80% training and 20% testing data (stratified, so both sets keep the same spam ratio).
+3. **TF-IDF vectorisation** converts each message into numbers that reflect how important each word is.
+4. **Train two models**: Multinomial Naive Bayes and Linear SVM.
+5. **Evaluate** with accuracy, precision, recall and F1-score.
+6. **Predict** on new example messages.
+
+## Results
+| Model | Accuracy | Spam precision | Spam recall |
+|---|---|---|---|
+| Naive Bayes | 97.0% | 1.00 | 0.78 |
+| Linear SVM | **98.4%** | 0.99 | **0.89** |
+
+The SVM catches more spam while still almost never flagging a real message as spam.
+
+## Setup and usage
+```bash
+pip install pandas scikit-learn
+python spam_classifier.py
+```
+
+## Tech stack
+Python, pandas, scikit-learn (TF-IDF, Naive Bayes, LinearSVC)
