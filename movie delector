@@ -1,0 +1,80 @@
+"""
+Movie Recommendation System
+Recommends movies two ways:
+  1. Content-based filtering  -> movies with similar GENRES
+  2. Collaborative filtering  -> movies that the SAME USERS rated similarly
+
+Dataset: MovieTweetings 100K (real IMDb ratings from Twitter, scale 0-10)
+
+Usage:
+    python movie_recommender.py
+"""
+
+import pandas as pd
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+
+BASE = "https://raw.githubusercontent.com/sidooms/MovieTweetings/master/snapshots/100K/"
+MIN_RATINGS = 20  # ignore movies with too few ratings (their scores aren't reliable)
+
+# ---------- 1. Load data ----------
+movies = pd.read_csv(BASE + "movies.dat", sep="::", engine="python",
+                     names=["movie_id", "title", "genres"], encoding="utf-8")
+ratings = pd.read_csv(BASE + "ratings.dat", sep="::", engine="python",
+                      names=["user_id", "movie_id", "rating", "timestamp"])
+movies["genres"] = movies["genres"].fillna("")
+
+# Keep only movies with enough ratings, and attach their popularity stats
+stats = ratings.groupby("movie_id")["rating"].agg(num_ratings="count", avg_rating="mean")
+movies = movies.merge(stats, on="movie_id")
+movies = movies[movies["num_ratings"] >= MIN_RATINGS].reset_index(drop=True)
+ratings = ratings[ratings["movie_id"].isin(movies["movie_id"])]
+print(f"{len(movies)} movies, {len(ratings)} ratings, {ratings['user_id'].nunique()} users\n")
+
+
+def find_movie(name):
+    """Return the row index of the first movie whose title contains `name`."""
+    matches = movies[movies["title"].str.contains(name, case=False, regex=False)]
+    if matches.empty:
+        raise ValueError(f"Movie '{name}' not found")
+    return matches.index[0]
+
+
+# ---------- 2. Content-based filtering (genres) ----------
+# Turn "Action|Crime|Drama" into a 0/1 vector: one column per genre
+genre_vectorizer = CountVectorizer(tokenizer=lambda s: s.split("|"), token_pattern=None)
+genre_matrix = genre_vectorizer.fit_transform(movies["genres"])
+
+
+def recommend_by_genre(name, n=5):
+    idx = find_movie(name)
+    scores = cosine_similarity(genre_matrix[idx], genre_matrix).flatten()
+    result = movies.assign(similarity=scores).drop(idx)
+    # Many movies share identical genres, so break ties with the higher-rated one
+    result = result.sort_values(["similarity", "avg_rating"], ascending=False)
+    return result.head(n)[["title", "genres", "avg_rating"]]
+
+
+# ---------- 3. Collaborative filtering (item-item) ----------
+# Build a movie x user table of ratings (0 = not rated)
+user_item = ratings.pivot_table(index="movie_id", columns="user_id", values="rating").fillna(0)
+item_similarity = pd.DataFrame(cosine_similarity(user_item),
+                               index=user_item.index, columns=user_item.index)
+
+
+def recommend_by_users(name, n=5):
+    movie_id = movies.loc[find_movie(name), "movie_id"]
+    similar = item_similarity[movie_id].drop(movie_id).sort_values(ascending=False).head(n)
+    result = movies.set_index("movie_id").loc[similar.index, ["title", "avg_rating"]]
+    return result.assign(similarity=similar.values.round(3)).reset_index(drop=True)
+
+
+# ---------- 4. Demo ----------
+if __name__ == "__main__":
+    for film in ["The Dark Knight", "Toy Story 3", "Inception"]:
+        print(f"===== Because you liked: {movies.loc[find_movie(film), 'title']} =====")
+        print("\n-- Similar genres --")
+        print(recommend_by_genre(film).to_string(index=False))
+        print("\n-- Users who liked it also liked --")
+        print(recommend_by_users(film).to_string(index=False))
+        print()
